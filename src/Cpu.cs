@@ -3,7 +3,7 @@ using System.IO.Compression;
 
 namespace SimpleBench;
 
-internal sealed class CpuBenchmark : Benchmark<double> {
+internal sealed class CpuBenchmark : Benchmark {
 	private const int RandomBufferSize = Gibibyte / 64;
 
 	private const int CompressionBufferSize = Gibibyte;
@@ -37,15 +37,7 @@ internal sealed class CpuBenchmark : Benchmark<double> {
 		State = InitState.Initialized;
 	}
 
-	public override IEnumerable<double> Run(int times) {
-		if (State != InitState.Initialized)
-			yield break;
-
-		for (int i = 0; i < times; i++)
-			yield return BrotliBenchmark();
-	}
-
-	private double BrotliBenchmark() {
+	protected override double RunBenchmark() {
 		Stopwatch sw = new();
 		sw.Start();
 

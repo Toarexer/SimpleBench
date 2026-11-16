@@ -4,40 +4,54 @@ using ILGPU.Runtime;
 
 namespace SimpleBench;
 
-internal sealed class GpuBenchmarkDevice : IDisposable {
-	private readonly Action<Index1D, ArrayView<float>> _resetKernel;
+internal sealed class GpuBenchmarkHandler : IDisposable {
+	private readonly Context _context;
 
-	public Accelerator Accelerator { get; }
+	public GpuBenchmark[] Benchmarks { get; }
 
-	public Action<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>> Kernel { get; }
+	public GpuBenchmarkHandler() {
+		_context = Context.CreateDefault();
+		Device[] devices = [.. _context.GetPreferredDevices(false, false)];
 
-	public int BufferSize { get; }
-
-	public MemoryBuffer1D<float, Stride1D.Dense> A { get; }
-
-	public MemoryBuffer1D<float, Stride1D.Dense> B { get; }
-
-	public MemoryBuffer1D<float, Stride1D.Dense> C { get; }
-
-	public GpuBenchmarkDevice(Context context, Device device, int bufferSize) {
-		Accelerator = device.CreateAccelerator(context);
-		Kernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(TriadKernel);
-
-		BufferSize = bufferSize / sizeof(float);
-		A = Accelerator.Allocate1D<float>(bufferSize);
-		B = Accelerator.Allocate1D<float>(bufferSize);
-		C = Accelerator.Allocate1D<float>(bufferSize);
-
-		Action<Index1D, ArrayView<float>, ArrayView<float>> setupKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<float>, ArrayView<float>>(SetupKernel);
-		setupKernel(BufferSize, B.View, C.View);
-		Accelerator.Synchronize();
-
-		_resetKernel = Accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<float>>(ResetKernel);
+		Benchmarks = new GpuBenchmark[devices.Length];
+		for (int i = 0; i < devices.Length; i++)
+			Benchmarks[i] = new GpuBenchmark(_context, devices[i], i);
 	}
 
-	public void ResetBufferA() {
-		_resetKernel(BufferSize, A.View);
-		Accelerator.Synchronize();
+	public void Dispose() {
+		foreach (GpuBenchmark benchmark in Benchmarks)
+			benchmark.Dispose();
+		_context.Dispose();
+	}
+}
+
+internal sealed class GpuBenchmark : Benchmark, IDisposable {
+	private const int BufferLength = Gibibyte / sizeof(float);
+
+	private readonly Accelerator _accelerator;
+
+	private readonly Action<Index1D, ArrayView<float>, ArrayView<float>> _setupKernel;
+
+	private readonly Action<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>> _triadKernel;
+
+	private readonly Action<Index1D, ArrayView<float>> _resetKernel;
+
+	private MemoryBuffer1D<float, Stride1D.Dense>? _bufferA;
+
+	private MemoryBuffer1D<float, Stride1D.Dense>? _bufferB;
+
+	private MemoryBuffer1D<float, Stride1D.Dense>? _bufferC;
+
+	public override string Name { get; }
+
+	public GpuBenchmark(Context context, Device device, int deviceIndex) {
+		_accelerator = device.CreateAccelerator(context);
+
+		_setupKernel = _accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<float>, ArrayView<float>>(SetupKernel);
+		_triadKernel = _accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(TriadKernel);
+		_resetKernel = _accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<float>>(ResetKernel);
+
+		Name = $"GPU{deviceIndex}";
 	}
 
 	private static void SetupKernel(Index1D index, ArrayView<float> b, ArrayView<float> c) {
@@ -53,61 +67,42 @@ internal sealed class GpuBenchmarkDevice : IDisposable {
 		a[index] = 0;
 	}
 
-	public void Dispose() {
-		C.Dispose();
-		B.Dispose();
-		A.Dispose();
-		Accelerator.Dispose();
-	}
-}
-
-internal sealed class GpuBenchmark : Benchmark<double>, IDisposable {
-	private const int TotalBufferSize = Gibibyte;
-
-	private Context? _context;
-
-	private GpuBenchmarkDevice[] _devices = [];
-
-	public override string Name => "GPU";
-
 	public override void Init() {
 		if (State != InitState.NotInitialized)
 			return;
 		State = InitState.Initializing;
 
-		_context = Context.CreateDefault();
-		Device[] devices = [.. _context.GetPreferredDevices(false, true)];
-		_devices = [.. devices.Select(device => new GpuBenchmarkDevice(_context, device, TotalBufferSize))];
+		_bufferA = _accelerator.Allocate1D<float>(BufferLength);
+		_bufferB = _accelerator.Allocate1D<float>(BufferLength);
+		_bufferC = _accelerator.Allocate1D<float>(BufferLength);
+
+		_setupKernel(BufferLength, _bufferB.View, _bufferC.View);
+		_accelerator.Synchronize();
 
 		State = InitState.Initialized;
 	}
 
-	public override IEnumerable<double> Run(int times) {
-		if (State != InitState.Initialized)
-			yield break;
+	protected override double RunBenchmark() {
+		if (_bufferA is null || _bufferB is null || _bufferC is null)
+			throw new NotInitializedException(Name);
 
-		for (int i = 0; i < times; i++)
-			yield return StreamTriadBenchmark().Sum();
-	}
+		_resetKernel(BufferLength, _bufferA.View);
+		_accelerator.Synchronize();
 
-	private IEnumerable<double> StreamTriadBenchmark() {
-		foreach (GpuBenchmarkDevice device in _devices) {
-			device.ResetBufferA();
+		Stopwatch sw = new();
+		sw.Start();
 
-			Stopwatch sw = new();
-			sw.Start();
+		_triadKernel(BufferLength, _bufferA.View, _bufferB.View, _bufferC.View);
+		_accelerator.Synchronize();
 
-			device.Kernel(device.BufferSize, device.A.View, device.B.View, device.C.View);
-			device.Accelerator.Synchronize();
-
-			sw.Stop();
-			yield return sw.Elapsed.TotalSeconds;
-		}
+		sw.Stop();
+		return sw.Elapsed.TotalSeconds;
 	}
 
 	public void Dispose() {
-		foreach (GpuBenchmarkDevice device in _devices)
-			device.Dispose();
-		_context?.Dispose();
+		_bufferC?.Dispose();
+		_bufferB?.Dispose();
+		_bufferA?.Dispose();
+		_accelerator.Dispose();
 	}
 }

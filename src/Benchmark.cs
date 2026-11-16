@@ -1,8 +1,10 @@
-using System.Numerics;
-
 namespace SimpleBench;
 
-internal abstract class Benchmark<T> where T : INumber<T> {
+internal abstract class Benchmark {
+	protected class NotInitializedException(string component) : Exception {
+		public override string ToString() => $"{component} benchmark not initialized";
+	}
+
 	public enum InitState {
 		NotInitialized,
 		Initializing,
@@ -17,5 +19,20 @@ internal abstract class Benchmark<T> where T : INumber<T> {
 
 	public abstract void Init();
 
-	public abstract IEnumerable<T> Run(int times);
+	protected abstract double RunBenchmark();
+
+	public virtual double Run(int seconds) {
+		if (State != InitState.Initialized)
+			throw new NotInitializedException(Name);
+
+		ulong count = 0;
+		double elapsed = 0;
+
+		while (elapsed < seconds) {
+			elapsed += RunBenchmark();
+			count++;
+		}
+
+		return count / elapsed;
+	}
 }

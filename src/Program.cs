@@ -1,6 +1,5 @@
 ﻿using System.CommandLine;
 using System.Diagnostics;
-using System.Numerics;
 using System.Text.Json;
 
 namespace SimpleBench;
@@ -11,14 +10,14 @@ internal static class Program {
 	};
 
 	private static int Main(string[] args) {
-		Option<int> countOption = new("--run-count", "-c") {
-			DefaultValueFactory = _ => 5,
-			Description = "The number of times to run the benchmarks.",
+		Option<int> durationOption = new("--duration", "-d") {
+			DefaultValueFactory = _ => 10,
+			Description = "The duration of each benchmark in seconds.",
 			Validators = {
 				result => {
 					int value = result.GetValue((Option<int>)result.Option);
 					if (value < 1)
-						result.AddError("The number of runs cannot be less than 1.");
+						result.AddError("The duration cannot be less than 1.");
 				}
 			}
 		};
@@ -39,7 +38,7 @@ internal static class Program {
 		};
 
 		RootCommand rootCommand = new("Simple Benchmark") {
-			countOption,
+			durationOption,
 			listDevicesOption,
 			listPreferredDevicesOption,
 			silentOption
@@ -60,24 +59,24 @@ internal static class Program {
 				return;
 			}
 
-			int count = result.GetValue(countOption);
+			int seconds = result.GetValue(durationOption);
 			bool silent = result.GetValue(silentOption);
-			RunBenchmarks(count, silent);
+			RunBenchmarks(seconds, silent);
 		});
 
 		return rootCommand.Parse(args).Invoke();
 	}
 
-	private static void RunBenchmarks(int count, bool silent = false) {
+	private static void RunBenchmarks(int seconds, bool silent = false) {
 		Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
 
 		CpuBenchmark cpuBench = new();
 		MemoryBenchmark memBench = new();
-		using GpuBenchmark gpuBench = new();
+		using GpuBenchmarkHandler gpuBenchHandler = new();
 
-		double[] cpuResults = cpuBench.RunBenchmark(count, silent);
-		double[] memResults = memBench.RunBenchmark(count, silent);
-		double[] gpuResults = gpuBench.RunBenchmark(count, silent);
+		double cpuResults = cpuBench.RunBenchmark(seconds, silent);
+		double memResults = memBench.RunBenchmark(seconds, silent);
+		double[] gpuResults = [.. gpuBenchHandler.Benchmarks.Select(benchmark => benchmark.RunBenchmark(seconds, silent))];
 
 		if (!silent)
 			Console.WriteLine("---");
@@ -93,14 +92,14 @@ internal static class Program {
 		Console.WriteLine(json);
 	}
 
-	private static T[] RunBenchmark<T>(this Benchmark<T> benchmark, int count, bool silent = false) where T : INumber<T> {
+	private static double RunBenchmark(this Benchmark benchmark, int seconds, bool silent = false) {
 		if (!silent)
 			Console.WriteLine($"Setting up {benchmark.Name} benchmark...");
 		benchmark.Init();
 
 		if (!silent)
-			Console.WriteLine($"Running {benchmark.Name} benchmark {count} (+3) times...");
-		return benchmark.Run(count + 3).RemoveFirstRunAndEdgeCases();
+			Console.WriteLine($"Running {benchmark.Name} benchmark for {seconds} seconds...");
+		return benchmark.Run(seconds);
 	}
 
 	private static T[] RemoveFirstRunAndEdgeCases<T>(this IEnumerable<T> source) {

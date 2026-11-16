@@ -2,17 +2,17 @@ using System.Diagnostics;
 
 namespace SimpleBench;
 
-internal sealed class MemoryBenchmark : Benchmark<double> {
+internal sealed class MemoryBenchmark : Benchmark {
 	private const int BufferSize = Gibibyte;
 
 	private const float Scalar = 3;
 
 	// ReSharper disable once CollectionNeverQueried.Local
-	private readonly byte[] _buffer1 = new byte[BufferSize];
+	private readonly byte[] _bufferA = new byte[BufferSize];
 
-	private readonly byte[] _buffer2 = new byte[BufferSize];
+	private readonly byte[] _bufferB = new byte[BufferSize];
 
-	private readonly byte[] _buffer3 = new byte[BufferSize];
+	private readonly byte[] _bufferC = new byte[BufferSize];
 
 	public override string Name => "Memory";
 
@@ -22,29 +22,21 @@ internal sealed class MemoryBenchmark : Benchmark<double> {
 		State = InitState.Initializing;
 
 		Parallel.For(0, BufferSize, i => {
-			_buffer1[i] = 0;
-			_buffer1[i] = 1;
-			_buffer1[i] = 2;
+			_bufferA[i] = 0;
+			_bufferA[i] = 1;
+			_bufferA[i] = 2;
 		});
 
 		State = InitState.Initialized;
 	}
 
-	public override IEnumerable<double> Run(int times) {
-		if (State != InitState.Initialized)
-			yield break;
-
-		for (int i = 0; i < times; i++)
-			yield return StreamTriadBenchmark();
-	}
-
-	private double StreamTriadBenchmark() {
+	protected override double RunBenchmark() {
 		Stopwatch sw = new();
 		sw.Start();
 
 		Parallel.For(0, BufferSize, i => {
 			unchecked {
-				_buffer1[i] = (byte)(_buffer2[i] + Scalar * _buffer3[i]);
+				_bufferA[i] = (byte)(_bufferB[i] + Scalar * _bufferC[i]);
 			}
 		});
 
