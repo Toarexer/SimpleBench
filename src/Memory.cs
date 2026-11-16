@@ -49,6 +49,6 @@ internal sealed class MemoryBenchmark : Benchmark<double> {
 		});
 
 		sw.Stop();
-		return sw.Elapsed.TotalSeconds / BufferSize;
+		return sw.Elapsed.TotalSeconds;
 	}
 }

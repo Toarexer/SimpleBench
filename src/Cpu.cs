@@ -8,13 +8,13 @@ internal sealed class CpuBenchmark : Benchmark<double> {
 
 	private const int CompressionBufferSize = Gibibyte;
 
-	private readonly Memory<byte> _randomBuffer = new byte[RandomBufferSize];
+	private readonly byte[] _randomBuffer = new byte[RandomBufferSize];
 
-	private readonly Memory<byte> _sourceBuffer = new byte[CompressionBufferSize];
+	private readonly byte[] _sourceBuffer = new byte[CompressionBufferSize];
 
-	private readonly Memory<byte> _compressedDataBuffer = new byte[CompressionBufferSize];
+	private readonly byte[] _compressedDataBuffer = new byte[CompressionBufferSize];
 
-	private readonly Memory<byte> _decompressedDataBuffer = new byte[CompressionBufferSize];
+	private readonly byte[] _decompressedDataBuffer = new byte[CompressionBufferSize];
 
 	public override string Name => "CPU";
 
@@ -24,14 +24,13 @@ internal sealed class CpuBenchmark : Benchmark<double> {
 		State = InitState.Initializing;
 
 		Random random = new(Gibibyte);
-		random.NextBytes(_randomBuffer.Span);
+		random.NextBytes(_randomBuffer);
 
 		int copied = 0;
 		while (copied < _compressedDataBuffer.Length) {
-			Memory<byte> destination = _sourceBuffer[copied..];
+			Span<byte> destination = _sourceBuffer.AsSpan(copied);
 			int n = Math.Min(_randomBuffer.Length, destination.Length);
-
-			_randomBuffer[..n].CopyTo(destination);
+			_randomBuffer.AsSpan(0, n).CopyTo(destination);
 			copied += n;
 		}
 
@@ -50,10 +49,10 @@ internal sealed class CpuBenchmark : Benchmark<double> {
 		Stopwatch sw = new();
 		sw.Start();
 
-		BrotliEncoder.TryCompress(_sourceBuffer.Span, _compressedDataBuffer.Span, out int compressed);
-		BrotliDecoder.TryDecompress(_compressedDataBuffer[..compressed].Span, _decompressedDataBuffer.Span, out _);
+		BrotliEncoder.TryCompress(_sourceBuffer, _compressedDataBuffer, out int compressed);
+		BrotliDecoder.TryDecompress(_compressedDataBuffer.AsSpan(0, compressed), _decompressedDataBuffer, out _);
 
 		sw.Stop();
-		return sw.Elapsed.TotalSeconds / _sourceBuffer.Length;
+		return sw.Elapsed.TotalSeconds;
 	}
 }

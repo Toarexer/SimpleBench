@@ -23,6 +23,16 @@ internal static class Program {
 			}
 		};
 
+		Option<bool> listDevicesOption = new("--list-devices", "-l") {
+			DefaultValueFactory = _ => false,
+			Description = "List available devices for the graphics benchmark."
+		};
+
+		Option<bool> listPreferredDevicesOption = new("--list-preferred-devices", "-p") {
+			DefaultValueFactory = _ => false,
+			Description = "List preferred devices for the graphics benchmark."
+		};
+
 		Option<bool> silentOption = new("--silent", "-s") {
 			DefaultValueFactory = _ => false,
 			Description = "Suppress messages and only print the JSON result."
@@ -30,10 +40,26 @@ internal static class Program {
 
 		RootCommand rootCommand = new("Simple Benchmark") {
 			countOption,
+			listDevicesOption,
+			listPreferredDevicesOption,
 			silentOption
 		};
 
 		rootCommand.SetAction(result => {
+			bool listPreferred = result.GetValue(listPreferredDevicesOption);
+			if (listPreferred) {
+				foreach (DeviceInfo info in Utils.GetPreferredDevices())
+					Console.WriteLine($"{info.Type}_{info.Index}: {info.Name}");
+				return;
+			}
+
+			bool listAvailable = result.GetValue(listDevicesOption);
+			if (listAvailable) {
+				foreach (DeviceInfo info in Utils.GetAvailableDevices())
+					Console.WriteLine($"{info.Type}_{info.Index}: {info.Name}");
+				return;
+			}
+
 			int count = result.GetValue(countOption);
 			bool silent = result.GetValue(silentOption);
 			RunBenchmarks(count, silent);
@@ -47,9 +73,11 @@ internal static class Program {
 
 		CpuBenchmark cpuBench = new();
 		MemoryBenchmark memBench = new();
+		using GpuBenchmark gpuBench = new();
 
 		double[] cpuResults = cpuBench.RunBenchmark(count, silent);
 		double[] memResults = memBench.RunBenchmark(count, silent);
+		double[] gpuResults = gpuBench.RunBenchmark(count, silent);
 
 		if (!silent)
 			Console.WriteLine("---");
@@ -57,7 +85,8 @@ internal static class Program {
 		string json = JsonSerializer.Serialize(
 			new {
 				cpuResults,
-				memResults
+				memResults,
+				gpuResults
 			},
 			JsonOptions
 		);
