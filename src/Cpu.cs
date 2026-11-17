@@ -4,9 +4,9 @@ using System.IO.Compression;
 namespace SimpleBench;
 
 internal sealed class CpuBenchmark : Benchmark {
-	private const int RandomBufferSize = Gibibyte / 64;
+	private const int CompressionBufferSize = Gibibyte / 8;
 
-	private const int CompressionBufferSize = Gibibyte;
+	private const int RandomBufferSize = CompressionBufferSize / 16;
 
 	private readonly byte[] _randomBuffer = new byte[RandomBufferSize];
 
@@ -15,6 +15,8 @@ internal sealed class CpuBenchmark : Benchmark {
 	private readonly byte[] _compressedDataBuffer = new byte[CompressionBufferSize];
 
 	private readonly byte[] _decompressedDataBuffer = new byte[CompressionBufferSize];
+
+	private Action[] _actions = [];
 
 	public override string Name => "CPU";
 
@@ -34,17 +36,29 @@ internal sealed class CpuBenchmark : Benchmark {
 			copied += n;
 		}
 
+		_actions = new Action[Environment.ProcessorCount - 1];
+		for (int i = 0; i < _actions.Length; i++)
+			_actions[i] = BrotliBenchmark;
+
 		State = InitState.Initialized;
 	}
 
 	protected override double RunBenchmark() {
+		ParallelOptions options = new() {
+			MaxDegreeOfParallelism = _actions.Length
+		};
+
 		Stopwatch sw = new();
 		sw.Start();
 
-		BrotliEncoder.TryCompress(_sourceBuffer, _compressedDataBuffer, out int compressed);
-		BrotliDecoder.TryDecompress(_compressedDataBuffer.AsSpan(0, compressed), _decompressedDataBuffer, out _);
+		Parallel.Invoke(options, _actions);
 
 		sw.Stop();
 		return sw.Elapsed.TotalSeconds;
+	}
+
+	private void BrotliBenchmark() {
+		BrotliEncoder.TryCompress(_sourceBuffer, _compressedDataBuffer, out int compressed);
+		BrotliDecoder.TryDecompress(_compressedDataBuffer.AsSpan(0, compressed), _decompressedDataBuffer, out _);
 	}
 }

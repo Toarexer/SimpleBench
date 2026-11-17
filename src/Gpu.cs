@@ -9,9 +9,14 @@ internal sealed class GpuBenchmarkHandler : IDisposable {
 
 	public GpuBenchmark[] Benchmarks { get; }
 
-	public GpuBenchmarkHandler() {
+	public GpuBenchmarkHandler(HashSet<string> accelerators) {
 		_context = Context.CreateDefault();
-		Device[] devices = [.. _context.GetPreferredDevices(false, false)];
+
+		Device[] devices = [
+			.. accelerators.Count == 0
+				? _context.GetPreferredDevices(false, false)
+				: _context.Devices.Where(device => accelerators.Contains(device.Name))
+		];
 
 		Benchmarks = new GpuBenchmark[devices.Length];
 		for (int i = 0; i < devices.Length; i++)
@@ -51,7 +56,7 @@ internal sealed class GpuBenchmark : Benchmark, IDisposable {
 		_triadKernel = _accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(TriadKernel);
 		_resetKernel = _accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<float>>(ResetKernel);
 
-		Name = $"GPU{deviceIndex}";
+		Name = $"GPU_{device.Name}";
 	}
 
 	private static void SetupKernel(Index1D index, ArrayView<float> b, ArrayView<float> c) {

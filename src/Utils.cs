@@ -11,17 +11,22 @@ internal record DeviceInfo(string Type, int Index, string Name);
 internal static class Utils {
 	public static IEnumerable<DeviceInfo> GetPreferredDevices() {
 		using Context context = Context.CreateDefault();
+		return GetPreferredDevices(context);
+	}
 
+	public static IEnumerable<DeviceInfo> GetPreferredDevices(Context context) {
 		HashSet<string> names = [.. context.GetPreferredDevices(false, false).Select(device => device.Name)];
-
-		foreach (DeviceInfo info in GetAvailableDevices())
+		foreach (DeviceInfo info in GetAvailableDevices(context))
 			if (names.Contains(info.Name))
 				yield return info;
 	}
 
 	public static IEnumerable<DeviceInfo> GetAvailableDevices() {
 		using Context context = Context.CreateDefault();
+		return GetAvailableDevices(context);
+	}
 
+	public static IEnumerable<DeviceInfo> GetAvailableDevices(Context context) {
 		foreach (DeviceInfo info in context.GetDeviceNames<CPUDevice>())
 			yield return info;
 		foreach (DeviceInfo info in context.GetDeviceNames<CLDevice>())
