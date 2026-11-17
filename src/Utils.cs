@@ -6,7 +6,13 @@ using ILGPU.Runtime.OpenCL;
 
 namespace SimpleBench;
 
-internal record DeviceInfo(string Type, int Index, string Name);
+internal readonly struct DeviceInfo(Device device, int index) {
+	public Device Device { get; } = device;
+
+	public string Id { get; } = $"{device.AcceleratorType}_{index}";
+
+	public override string ToString() => $"{Id}: {Device.Name}";
+}
 
 internal static class Utils {
 	public static IEnumerable<DeviceInfo> GetPreferredDevices() {
@@ -17,7 +23,7 @@ internal static class Utils {
 	public static IEnumerable<DeviceInfo> GetPreferredDevices(Context context) {
 		HashSet<string> names = [.. context.GetPreferredDevices(false, false).Select(device => device.Name)];
 		foreach (DeviceInfo info in GetAvailableDevices(context))
-			if (names.Contains(info.Name))
+			if (names.Contains(info.Device.Name))
 				yield return info;
 	}
 
@@ -27,20 +33,20 @@ internal static class Utils {
 	}
 
 	public static IEnumerable<DeviceInfo> GetAvailableDevices(Context context) {
-		foreach (DeviceInfo info in context.GetDeviceNames<CPUDevice>())
+		foreach (DeviceInfo info in context.GetDeviceInfos<CPUDevice>())
 			yield return info;
-		foreach (DeviceInfo info in context.GetDeviceNames<CLDevice>())
+		foreach (DeviceInfo info in context.GetDeviceInfos<CLDevice>())
 			yield return info;
-		foreach (DeviceInfo info in context.GetDeviceNames<CudaDevice>())
+		foreach (DeviceInfo info in context.GetDeviceInfos<CudaDevice>())
 			yield return info;
 	}
 
-	private static DeviceInfo[] GetDeviceNames<T>(this Context context) where T : Device {
+	private static DeviceInfo[] GetDeviceInfos<T>(this Context context) where T : Device {
 		Context.DeviceCollection<T> devices = context.GetDevices<T>();
 		DeviceInfo[] infos = new DeviceInfo[devices.Count];
 
 		for (int i = 0; i < devices.Count; i++)
-			infos[i] = new DeviceInfo(typeof(T).Name, i, devices[i].Name);
+			infos[i] = new DeviceInfo(devices[i], i);
 
 		return infos;
 	}

@@ -6,12 +6,14 @@ using System.Text.Json;
 namespace SimpleBench;
 
 internal static class Program {
+	[Flags]
 	[SuppressMessage("ReSharper", "InconsistentNaming")]
 	private enum Benchmarks {
-		All,
-		CPU,
-		Memory,
-		GPU
+		None   = 0b0000,
+		CPU    = 0b0001,
+		Memory = 0b0010,
+		GPU    = 0b0100,
+		All    = CPU | Memory | GPU
 	}
 
 	private static readonly JsonSerializerOptions JsonOptions = new() {
@@ -21,14 +23,14 @@ internal static class Program {
 	private static int Main(string[] args) {
 		Option<IEnumerable<string>> acceleratorOption = new("--accelerator", "-a") {
 			Arity = ArgumentArity.OneOrMore,
-			DefaultValueFactory = _ => [.. Utils.GetPreferredDevices().Select(device => device.Name)],
+			DefaultValueFactory = _ => Utils.GetPreferredDevices().Select(device => device.Id),
 			Description = "The accelerators to use for the graphics benchmarks.",
 		};
 
 		Option<IEnumerable<Benchmarks>> benchmarkOption = new("--benchmark", "-b") {
 			Arity = ArgumentArity.OneOrMore,
 			DefaultValueFactory = _ => [Benchmarks.CPU, Benchmarks.Memory, Benchmarks.GPU],
-			Description = "The benchmarks to run."
+			Description = $"The benchmark types to run. Accepts the \"{Benchmarks.All}\" value to run all benchmark types."
 		};
 
 		Option<int> durationOption = new("--duration", "-d") {
@@ -55,8 +57,8 @@ internal static class Program {
 			silentOption
 		};
 		runBenchmarksCommand.SetAction(result => {
-			HashSet<string> accelerators = [.. result.GetValue(acceleratorOption)!];
-			HashSet<Benchmarks> benchmarks = [.. result.GetValue(benchmarkOption)!];
+			HashSet<string> accelerators = new(result.GetValue(acceleratorOption)!, StringComparer.OrdinalIgnoreCase);
+			Benchmarks benchmarks = result.GetValue(benchmarkOption)!.Aggregate(Benchmarks.None, (accumulator, next) => accumulator | next);
 			int seconds = result.GetValue(durationOption);
 			bool silent = result.GetValue(silentOption);
 
@@ -75,7 +77,7 @@ internal static class Program {
 			bool listPreferred = result.GetValue(listPreferredDevicesOption);
 
 			foreach (DeviceInfo info in listPreferred ? Utils.GetPreferredDevices() : Utils.GetAvailableDevices())
-				Console.WriteLine($"{info.Type}_{info.Index}: {info.Name}");
+				Console.WriteLine(info);
 		});
 
 		RootCommand rootCommand = new("Simple Benchmark") {
@@ -86,29 +88,27 @@ internal static class Program {
 		return rootCommand.Parse(args).Invoke();
 	}
 
-	private static void RunBenchmarks(HashSet<string> accelerators, HashSet<Benchmarks> benchmarks, int seconds, bool silent = false) {
+	private static void RunBenchmarks(HashSet<string> accelerators, Benchmarks benchmarks, int seconds, bool silent = false) {
 		Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
 
 		Dictionary<string, object> results = new();
 
-		if (benchmarks.Contains(Benchmarks.All) || benchmarks.Contains(Benchmarks.CPU)) {
+		if (benchmarks.HasFlag(Benchmarks.CPU)) {
 			results["cpu"] = new CpuBenchmark().RunBenchmark(seconds, silent);
 		}
 
-		GC.Collect();
+		WaitForGarbageCollection();
 
-		if (benchmarks.Contains(Benchmarks.All) || benchmarks.Contains(Benchmarks.Memory)) {
+		if (benchmarks.HasFlag(Benchmarks.Memory)) {
 			results["mem"] = new MemoryBenchmark().RunBenchmark(seconds, silent);
 		}
 
-		GC.Collect();
+		WaitForGarbageCollection();
 
-		if (benchmarks.Contains(Benchmarks.All) || benchmarks.Contains(Benchmarks.GPU)) {
+		if (benchmarks.HasFlag(Benchmarks.GPU)) {
 			using GpuBenchmarkHandler gpuBenchHandler = new(accelerators);
 			results["gpu"] = gpuBenchHandler.Benchmarks.Select(benchmark => benchmark.RunBenchmark(seconds, silent)).ToArray();
 		}
-
-		GC.Collect();
 
 		if (!silent)
 			Console.WriteLine("---");
@@ -125,5 +125,11 @@ internal static class Program {
 		if (!silent)
 			Console.WriteLine($"Running {benchmark.Name} benchmark for {seconds} seconds...");
 		return benchmark.Run(seconds);
+	}
+
+	private static void WaitForGarbageCollection() {
+		GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
+		GC.WaitForPendingFinalizers();
+		GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
 	}
 }

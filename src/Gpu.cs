@@ -12,15 +12,15 @@ internal sealed class GpuBenchmarkHandler : IDisposable {
 	public GpuBenchmarkHandler(HashSet<string> accelerators) {
 		_context = Context.CreateDefault();
 
-		Device[] devices = [
+		DeviceInfo[] devices = [
 			.. accelerators.Count == 0
-				? _context.GetPreferredDevices(false, false)
-				: _context.Devices.Where(device => accelerators.Contains(device.Name))
+				? Utils.GetPreferredDevices(_context)
+				: Utils.GetAvailableDevices(_context).Where(device => accelerators.Contains(device.Id))
 		];
 
 		Benchmarks = new GpuBenchmark[devices.Length];
 		for (int i = 0; i < devices.Length; i++)
-			Benchmarks[i] = new GpuBenchmark(_context, devices[i], i);
+			Benchmarks[i] = new GpuBenchmark(_context, devices[i]);
 	}
 
 	public void Dispose() {
@@ -49,14 +49,14 @@ internal sealed class GpuBenchmark : Benchmark, IDisposable {
 
 	public override string Name { get; }
 
-	public GpuBenchmark(Context context, Device device, int deviceIndex) {
-		_accelerator = device.CreateAccelerator(context);
+	public GpuBenchmark(Context context, DeviceInfo info) {
+		_accelerator = info.Device.CreateAccelerator(context);
 
 		_setupKernel = _accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<float>, ArrayView<float>>(SetupKernel);
 		_triadKernel = _accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<float>, ArrayView<float>, ArrayView<float>>(TriadKernel);
 		_resetKernel = _accelerator.LoadAutoGroupedStreamKernel<Index1D, ArrayView<float>>(ResetKernel);
 
-		Name = $"GPU_{device.Name}";
+		Name = $"GPU ({info})";
 	}
 
 	private static void SetupKernel(Index1D index, ArrayView<float> b, ArrayView<float> c) {
