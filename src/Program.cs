@@ -6,14 +6,24 @@ using System.Text.Json;
 namespace SimpleBench;
 
 internal static class Program {
+	/// Defines the types of benchmarks that can be run.
 	[Flags]
 	[SuppressMessage("ReSharper", "InconsistentNaming")]
 	private enum Benchmarks {
-		None   = 0b0000,
-		CPU    = 0b0001,
+		/// No benchmark.
+		None = 0b0000,
+
+		/// The CPU compression benchmark.
+		CPU = 0b0001,
+
+		/// The Memory STREAM Triad benchmark.
 		Memory = 0b0010,
-		GPU    = 0b0100,
-		All    = CPU | Memory | GPU
+
+		/// The GPU (accelerator) STREAM Triad benchmark.
+		GPU = 0b0100,
+
+		/// The <see cref="CPU"/>, <see cref="Memory"/> and <see cref="GPU"/> benchmarks.
+		All = CPU | Memory | GPU
 	}
 
 	private static readonly JsonSerializerOptions JsonOptions = new() {
@@ -88,6 +98,11 @@ internal static class Program {
 		return rootCommand.Parse(args).Invoke();
 	}
 
+	/// <summary>Runs the requested benchmarks.</summary>
+	/// <param name="accelerators">A collection IDs from <see cref="DeviceInfo"/> objects that determine which devices will be used. If left empty the preferred devices are used.</param>
+	/// <param name="benchmarks">Defines the types of benchmarks that should be run.</param>
+	/// <param name="seconds">Defines the minimum duration of a benchmark.</param>
+	/// <param name="silent">If <see langword="true"/>, No messages and only the JSON results will be written to <see cref="Console.Out"/>.</param>
 	private static void RunBenchmarks(HashSet<string> accelerators, Benchmarks benchmarks, int seconds, bool silent = false) {
 		Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
 
@@ -117,6 +132,11 @@ internal static class Program {
 		Console.WriteLine(json);
 	}
 
+	/// <summary>Runs a <see cref="Benchmark"/> implementation.</summary>
+	/// <param name="benchmark">The <see cref="Benchmark"/> implementation to run.</param>
+	/// <param name="seconds">Defines the minimum duration of the benchmark.</param>
+	/// <param name="silent">If <see langword="true"/>, No messages and only the JSON results will be written to <see cref="Console.Out"/>.</param>
+	/// <returns>The number of times the benchmark completed per second.</returns>
 	private static double RunBenchmark(this Benchmark benchmark, int seconds, bool silent) {
 		if (!silent)
 			Console.WriteLine($"Setting up {benchmark.Name} benchmark...");
@@ -127,6 +147,7 @@ internal static class Program {
 		return benchmark.Run(seconds);
 	}
 
+	/// Force and wait for garbage collection.
 	private static void WaitForGarbageCollection() {
 		GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
 		GC.WaitForPendingFinalizers();

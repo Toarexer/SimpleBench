@@ -6,11 +6,18 @@ using ILGPU.Runtime.OpenCL;
 
 namespace SimpleBench;
 
+/// <summary>Encapsulates a <see cref="Device"/> so it can be uniquely identified.</summary>
+/// <param name="device">The device to encapsulate.</param>
+/// <param name="index">The index of the device that must be different from the devices of the same <see cref="AcceleratorType"/>.</param>
 internal readonly struct DeviceInfo(Device device, int index) {
+	/// The ILGPU device.
 	public Device Device { get; } = device;
 
+	/// The unique identifier of the device made from the <see cref="AcceleratorType"/> and index.
 	public string Id { get; } = $"{device.AcceleratorType}_{index}";
 
+	/// <summary>Returns display name of the device derived from the <see cref="Id"/> and <see cref="Device.Name"/>.</summary>
+	/// <returns>The display name of the device.</returns>
 	public override string ToString() => $"{Id}: {Device.Name}";
 }
 

@@ -2,16 +2,21 @@ using System.Diagnostics;
 
 namespace SimpleBench;
 
+/// Represents a memory benchmark that can be initialized and ran to execute a STREAM Triad benchmark to measure how many times they can be completed per second.
 internal sealed class MemoryBenchmark : Benchmark {
+	/// 1 GiB
 	private const int BufferSize = Gibibyte;
 
 	private const float Scalar = 3;
 
 	// ReSharper disable once CollectionNeverQueried.Local
+	/// Buffer A of the STREAM Triad benchmark.
 	private readonly byte[] _bufferA = new byte[BufferSize];
 
+	/// Buffer B of the STREAM Triad benchmark.
 	private readonly byte[] _bufferB = new byte[BufferSize];
 
+	/// Buffer C of the STREAM Triad benchmark.
 	private readonly byte[] _bufferC = new byte[BufferSize];
 
 	public override string Name => "Memory";
